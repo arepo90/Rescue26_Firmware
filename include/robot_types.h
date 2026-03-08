@@ -7,9 +7,11 @@
 enum class RobotMode : uint8_t {
     INIT    = 0,  // startup / hardware init
     STANDBY = 1,  // idle, waiting for RC link
-    MAIN    = 2,  // RC drives tracks + flipper
-    ARM     = 3,  // RC drives arm end-effector; IK via mini PC
+    NORMAL  = 2,  // RC drives tracks (+ single flipper on ROBOT_MAIN)
+    ARM     = 3,  // RC input forwarded to mini PC for IK
     ESTOP   = 4,  // all outputs neutralised; cleared only by mini PC
+    FLIPPER = 5,  // RC drives flipper(s): single joined on ROBOT_MAIN,
+                  //   four independent via CAN on ROBOT_SECONDARY
 };
 
 // ─── PPM / RC ────────────────────────────────────────────────────────────────

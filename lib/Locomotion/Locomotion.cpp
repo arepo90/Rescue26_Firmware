@@ -1,4 +1,5 @@
 #include "Locomotion.h"
+#include "CANInterface.h"
 #include "config.h"
 #include <Arduino.h>
 #include <cmath>
@@ -23,6 +24,7 @@ uint32_t Locomotion::normToDuty(float norm) {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 void Locomotion::begin() {
+#ifdef ROBOT_MAIN
     // Configure LEDC channels for servo-style PWM (50 Hz, 14-bit)
     ledcSetup(LEDC_CH_LEFT,    PWM_FREQ_HZ, PWM_RESOLUTION);
     ledcSetup(LEDC_CH_RIGHT,   PWM_FREQ_HZ, PWM_RESOLUTION);
@@ -31,7 +33,10 @@ void Locomotion::begin() {
     ledcAttachPin(PIN_MOTOR_LEFT,    LEDC_CH_LEFT);
     ledcAttachPin(PIN_MOTOR_RIGHT,   LEDC_CH_RIGHT);
     ledcAttachPin(PIN_MOTOR_FLIPPER, LEDC_CH_FLIPPER);
-
+#elif defined(ROBOT_SECONDARY)
+    // No local PWM: all actuators are CAN-controlled.
+    // CANInterface is initialised separately in setup().
+#endif
     neutralise();
 }
 
@@ -67,10 +72,15 @@ void Locomotion::setFlipperTarget(float angle_deg) {
 }
 
 void Locomotion::neutralise() {
+#ifdef ROBOT_MAIN
     uint32_t neutral = normToDuty(0.0f);
     ledcWrite(LEDC_CH_LEFT,    neutral);
     ledcWrite(LEDC_CH_RIGHT,   neutral);
     ledcWrite(LEDC_CH_FLIPPER, neutral);
+#elif defined(ROBOT_SECONDARY)
+    CANInterface::sendTrackSpeeds(0.0f, 0.0f);
+    CANInterface::sendFlipperSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+#endif
 }
 
 // ─── Platform-specific output ────────────────────────────────────────────────
@@ -81,18 +91,37 @@ void Locomotion::applyTrackSpeeds(float left_norm, float right_norm) {
     ledcWrite(LEDC_CH_LEFT,  normToDuty(left_norm));
     ledcWrite(LEDC_CH_RIGHT, normToDuty(right_norm));
 #elif defined(ROBOT_SECONDARY)
-    // TODO: ROBOT_SECONDARY may use CAN motor controllers
-    // CANInterface::setMotorSpeed(CAN_ID_TRACK_LEFT,  left_norm);
-    // CANInterface::setMotorSpeed(CAN_ID_TRACK_RIGHT, right_norm);
+    // CAN motor controllers on ROBOT_SECONDARY
+    CANInterface::sendTrackSpeeds(left_norm, right_norm);
 #endif
 }
 
 void Locomotion::applyFlipperPWM(float norm) {
 #ifdef ROBOT_MAIN
+    // NOTE: the ROBOT_MAIN flipper driver may change from the current
+    // "regular PWM + two direction pins" wiring to a servo-PWM signal
+    // identical to the traction ESCs.  If that change is made, this function
+    // body needs no changes (normToDuty already produces a servo-style pulse),
+    // but the direction-pin GPIO setup and any H-bridge enable logic in begin()
+    // should be removed and the flipper pin remapped in config.h.
     ledcWrite(LEDC_CH_FLIPPER, normToDuty(norm));
-#elif defined(ROBOT_SECONDARY)
-    // TODO: ROBOT_SECONDARY may have 4 independent flippers via CAN
-    // CANInterface::setMotorSpeed(CAN_ID_FLIPPER_FL, norm);
-    // ...
 #endif
+    // ROBOT_SECONDARY uses applyFlipperSpeeds() instead — not called here.
+}
+
+void Locomotion::applyFlipperSpeeds(float fl, float fr, float rl, float rr) {
+#ifdef ROBOT_SECONDARY
+    CANInterface::sendFlipperSpeeds(fl, fr, rl, rr);
+#else
+    (void)fl; (void)fr; (void)rl; (void)rr;
+#endif
+}
+
+void Locomotion::setFlipperTargets(float fl, float fr, float rl, float rr) {
+    // Clamp all four to [-1, 1] before forwarding to CAN
+    fl = clampf(fl, -1.0f, 1.0f);
+    fr = clampf(fr, -1.0f, 1.0f);
+    rl = clampf(rl, -1.0f, 1.0f);
+    rr = clampf(rr, -1.0f, 1.0f);
+    applyFlipperSpeeds(fl, fr, rl, rr);
 }

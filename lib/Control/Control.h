@@ -6,17 +6,17 @@
 //
 // State transitions:
 //
-//  INIT ──(hw ready)──► STANDBY ──(PPM link)──► MAIN
-//                                                  │  ▲
-//                                          Ch5 hi  │  │ Ch5 lo
-//                                                  ▼  │
-//                                                  ARM
+//  INIT ──(hw ready)──► STANDBY ──(PPM link)──► NORMAL / FLIPPER / ARM
+//                                                         (follows Ch5)
+//
+//  Ch5 positions (3-position lever):
+//    ~1000 µs  →  FLIPPER  (ROBOT_MAIN: tracks+flipper same as NORMAL;
+//                           ROBOT_SECONDARY: Ch1-4 control individual flippers)
+//    ~1500 µs  →  NORMAL   (Ch2/Ch4 tracks; Ch1 flipper on ROBOT_MAIN)
+//    ~2000 µs  →  ARM      (all channels forwarded to mini PC for IK;
+//                           ROBOT_SECONDARY also relays returned joint angles via CAN)
 //
 //  Any state ──(ESTOP from mini PC)──► ESTOP ──(ESTOP_CLEAR)──► STANDBY
-//
-// The control loop runs at CONTROL_LOOP_HZ.  In ARM mode, joint commands
-// from the mini PC are forwarded to CANInterface; the ESP32 never tries to
-// solve IK locally.
 
 class Control {
 public:
@@ -37,11 +37,13 @@ public:
 
 private:
     // Per-mode update functions
-    static void updateMainMode(const PPMFrame& ppm, const EncoderState& enc);
+    static void updateNormalMode(const PPMFrame& ppm, const EncoderState& enc);
+    static void updateFlipperMode(const PPMFrame& ppm, const EncoderState& enc);
     static void updateArmMode(const PPMFrame& ppm);
 
-    // Determine mode from Ch5 pulse width
-    static bool isArmModeRequested(const PPMFrame& ppm);
+    // Decode the 3-position Ch5 lever into a target RobotMode.
+    // Returns NORMAL, FLIPPER, or ARM; never INIT / STANDBY / ESTOP.
+    static RobotMode decodeModeFromCh5(const PPMFrame& ppm);
 
     static RobotMode  s_mode;
     static ArmJoints  s_arm_joints;

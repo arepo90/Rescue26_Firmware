@@ -86,6 +86,32 @@ void CANInterface::poll() {
     }
 }
 
+bool CANInterface::sendTrackSpeeds(float left_norm, float right_norm) {
+    if (!s_ok) return false;
+    // TODO: define ROBOT_SECONDARY track CAN protocol.
+    // Suggested layout (one frame, both channels):
+    //   ID  = CAN_ID_TRACKS (TBD)
+    //   DLC = 4
+    //   data[0:1] = int16_t left_norm  × 1000
+    //   data[2:3] = int16_t right_norm × 1000
+    (void)left_norm; (void)right_norm;
+    return false;
+}
+
+bool CANInterface::sendFlipperSpeeds(float fl, float fr, float rl, float rr) {
+    if (!s_ok) return false;
+    // TODO: define ROBOT_SECONDARY flipper CAN protocol.
+    // Suggested layout (one frame per pair, or one broadcast frame):
+    //   ID  = CAN_ID_FLIPPERS (TBD)
+    //   DLC = 8
+    //   data[0:1] = int16_t fl × 1000
+    //   data[2:3] = int16_t fr × 1000
+    //   data[4:5] = int16_t rl × 1000
+    //   data[6:7] = int16_t rr × 1000
+    (void)fl; (void)fr; (void)rl; (void)rr;
+    return false;
+}
+
 bool CANInterface::isOk() {
     return s_ok;
 }

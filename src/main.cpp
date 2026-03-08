@@ -133,9 +133,6 @@ static void sensorTask(void* /*arg*/) {
 //  setup() — hardware init + task creation
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
-    // Serial (UART0) is claimed by Comms for mini PC comms via USB cable.
-    // Serial.print() will NOT work while mini PC comms is active.
-
     // Initialise all subsystems
     Comms::begin();
 
