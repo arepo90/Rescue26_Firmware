@@ -9,9 +9,38 @@ bool CANInterface::s_ok = false;
 // MCP2515 instance: CS pin, clock speed passed to constructor
 static MCP2515 s_mcp(PIN_CAN_CS);
 
-// ─── CAN ID map — fill these in once the arm protocol is documented ───────────
-// Example layout: one frame per joint, 2-byte signed angle (×100 deg) in bytes 0-1
-// static constexpr uint32_t CAN_ID_JOINT_BASE = 0x100;   // 0x100..0x105 for joints 1-6
+// ─── VESC CAN helpers ─────────────────────────────────────────────────────────
+// Standard VESC extended-frame protocol (matches VESC firmware source).
+// Extended ID = (command << 8) | controller_id, always sent with CAN_EFF_FLAG.
+
+static constexpr uint8_t VESC_CMD_SET_CURRENT = 1;
+
+// Build the VESC extended CAN ID for a given controller and command.
+static inline uint32_t vescEID(uint8_t ctrl_id, uint8_t cmd) {
+    return ((uint32_t)cmd << 8) | ctrl_id;
+}
+
+// Pack a 32-bit signed integer as 4 big-endian bytes into a CAN data buffer.
+static inline void putInt32BE(uint8_t* d, int32_t v) {
+    d[0] = (v >> 24) & 0xFF;
+    d[1] = (v >> 16) & 0xFF;
+    d[2] = (v >>  8) & 0xFF;
+    d[3] = (v >>  0) & 0xFF;
+}
+
+// Send a SET_CURRENT command to one VESC.
+// current_a: desired current in amperes (positive = forward, negative = reverse).
+// Returns true if the MCP2515 accepted the frame.
+static bool vescSendCurrent(MCP2515& mcp, uint8_t ctrl_id, float current_a) {
+    struct can_frame tx;
+    tx.can_id  = vescEID(ctrl_id, VESC_CMD_SET_CURRENT) | CAN_EFF_FLAG;
+    tx.can_dlc = 4;
+    putInt32BE(tx.data, static_cast<int32_t>(current_a * 1000.0f));  // A → mA
+    return mcp.sendMessage(&tx) == MCP2515::ERROR_OK;
+}
+
+// ─── Arm CAN ID map — fill in once arm protocol is documented ────────────────
+// static constexpr uint32_t CAN_ID_JOINT_BASE = 0x100;
 
 bool CANInterface::begin() {
     SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_CAN_CS);
@@ -19,18 +48,8 @@ bool CANInterface::begin() {
     MCP2515::ERROR err = s_mcp.reset();
     if (err != MCP2515::ERROR_OK) { s_ok = false; return false; }
 
-    // Set CAN bitrate — CAN_CLOCK_MHZ must match oscillator on module
-    CAN_SPEED speed;
-    switch (CAN_BITRATE_KBPS) {
-        case 125:  speed = CAN_125KBPS; break;
-        case 250:  speed = CAN_250KBPS; break;
-        case 500:  speed = CAN_500KBPS; break;
-        case 1000: speed = CAN_1000KBPS; break;
-        default:   speed = CAN_500KBPS; break;
-    }
-    CAN_CLOCK clk = (CAN_CLOCK_MHZ == 16) ? MCP_16MHZ : MCP_8MHZ;
-
-    err = s_mcp.setBitrate(speed, clk);
+    // 500 kbps, 8 MHz oscillator
+    err = s_mcp.setBitrate(CAN_500KBPS, MCP_8MHZ);
     if (err != MCP2515::ERROR_OK) { s_ok = false; return false; }
 
     s_mcp.setNormalMode();
@@ -88,28 +107,32 @@ void CANInterface::poll() {
 
 bool CANInterface::sendTrackSpeeds(float left_norm, float right_norm) {
     if (!s_ok) return false;
-    // TODO: define ROBOT_SECONDARY track CAN protocol.
-    // Suggested layout (one frame, both channels):
-    //   ID  = CAN_ID_TRACKS (TBD)
-    //   DLC = 4
-    //   data[0:1] = int16_t left_norm  × 1000
-    //   data[2:3] = int16_t right_norm × 1000
+#ifdef ROBOT_SECONDARY
+    // Scale normalised [-1,1] to current in amps and send to each track VESC.
+    float left_a  = left_norm  * VESC_TRACK_I_MAX_A;
+    float right_a = right_norm * VESC_TRACK_I_MAX_A;
+    bool ok = vescSendCurrent(s_mcp, VESC_ID_TRACK_LEFT,  left_a);
+    ok     &= vescSendCurrent(s_mcp, VESC_ID_TRACK_RIGHT, right_a);
+    return ok;
+#else
     (void)left_norm; (void)right_norm;
     return false;
+#endif
 }
 
 bool CANInterface::sendFlipperSpeeds(float fl, float fr, float rl, float rr) {
     if (!s_ok) return false;
-    // TODO: define ROBOT_SECONDARY flipper CAN protocol.
-    // Suggested layout (one frame per pair, or one broadcast frame):
-    //   ID  = CAN_ID_FLIPPERS (TBD)
-    //   DLC = 8
-    //   data[0:1] = int16_t fl × 1000
-    //   data[2:3] = int16_t fr × 1000
-    //   data[4:5] = int16_t rl × 1000
-    //   data[6:7] = int16_t rr × 1000
+#ifdef ROBOT_SECONDARY
+    // One SET_CURRENT frame per flipper VESC.
+    bool ok = vescSendCurrent(s_mcp, VESC_ID_FLIPPER_FL, fl * VESC_FLIPPER_I_MAX_A);
+    ok     &= vescSendCurrent(s_mcp, VESC_ID_FLIPPER_FR, fr * VESC_FLIPPER_I_MAX_A);
+    ok     &= vescSendCurrent(s_mcp, VESC_ID_FLIPPER_RL, rl * VESC_FLIPPER_I_MAX_A);
+    ok     &= vescSendCurrent(s_mcp, VESC_ID_FLIPPER_RR, rr * VESC_FLIPPER_I_MAX_A);
+    return ok;
+#else
     (void)fl; (void)fr; (void)rl; (void)rr;
     return false;
+#endif
 }
 
 bool CANInterface::isOk() {

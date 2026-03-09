@@ -81,6 +81,21 @@
   #define FLIPPER_ANGLE_MAX     120.0f
 #endif
 
+// ROBOT_SECONDARY: VESC motor controllers over CAN (500 kbps, MCP_8MHZ)
+// IDs are set in VESC Tool under "Controller ID".
+// Currents are the peak value commanded at full stick deflection; tune on bench.
+#ifdef ROBOT_SECONDARY
+  #define VESC_ID_TRACK_LEFT      1   // TODO: confirm via VESC Tool
+  #define VESC_ID_TRACK_RIGHT     2   // TODO: confirm
+  #define VESC_ID_FLIPPER_FL      3   // front-left  — TODO: confirm
+  #define VESC_ID_FLIPPER_FR      4   // front-right — TODO: confirm
+  #define VESC_ID_FLIPPER_RL      5   // rear-left   — TODO: confirm
+  #define VESC_ID_FLIPPER_RR      6   // rear-right  — TODO: confirm
+
+  #define VESC_TRACK_I_MAX_A      5.0f   // TODO: tune for traction motors
+  #define VESC_FLIPPER_I_MAX_A    3.0f   // TODO: tune for flipper motors
+#endif
+
 #define ENC_SPEED_INTERVAL_MS   50       // speed recalculation period
 
 // ─── Sensors ─────────────────────────────────────────────────────────────────

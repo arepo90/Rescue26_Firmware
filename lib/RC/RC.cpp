@@ -3,11 +3,9 @@
 #include <Arduino.h>
 
 // ─── ISR-shared state (volatile) ─────────────────────────────────────────────
-static volatile uint32_t s_last_rise_us  = 0;
+static volatile uint32_t s_last_edge_us  = 0;
 static volatile uint8_t  s_channel_idx   = 0;
 static volatile uint16_t s_raw[PPM_CHANNELS];   // captured in ISR
-static volatile bool     s_new_frame     = false;
-static volatile uint32_t s_last_frame_ms = 0;
 
 // ─── Snapshot for consumer (updated atomically under portENTER_CRITICAL) ──────
 static portMUX_TYPE    s_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -16,10 +14,14 @@ static uint32_t        s_frame_ms = 0;
 static bool            s_frame_fresh = false;
 
 // ─── ISR ─────────────────────────────────────────────────────────────────────
+// Triggered on FALLING edges.
+// Falling-to-falling interval = channel pulse width (1000–2000 µs), matching
+// PPM_MIN_US / PPM_MAX_US in config.h.  Intervals > PPM_SYNC_US mark the
+// frame boundary (sync gap HIGH period >> any channel value).
 void IRAM_ATTR RC::isr() {
     const uint32_t now      = micros();
-    const uint32_t interval = now - s_last_rise_us;
-    s_last_rise_us = now;
+    const uint32_t interval = now - s_last_edge_us;
+    s_last_edge_us = now;
 
     if (interval > PPM_SYNC_US) {
         // Sync gap: commit the previous frame if it was complete
@@ -32,7 +34,6 @@ void IRAM_ATTR RC::isr() {
         }
         s_channel_idx = 0;
     } else if (s_channel_idx < PPM_CHANNELS) {
-        // interval = separator_LOW + channel_HIGH ≈ channel value
         // Clamp to sane range before storing
         uint16_t clamped = (interval < 800u) ? 800u :
                            (interval > 2500u) ? 2500u : (uint16_t)interval;
@@ -43,7 +44,7 @@ void IRAM_ATTR RC::isr() {
 // ─── Public API ──────────────────────────────────────────────────────────────
 void RC::begin(uint8_t pin) {
     pinMode(pin, INPUT);
-    attachInterrupt(digitalPinToInterrupt(pin), isr, RISING);
+    attachInterrupt(digitalPinToInterrupt(pin), isr, FALLING);
 }
 
 bool RC::getFrame(PPMFrame& out) {
