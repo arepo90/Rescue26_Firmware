@@ -84,7 +84,7 @@ static void commsTask(void* /*arg*/) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Core 0 — CAN task
-//  Polls the MCP2515 for incoming frames (arm status, faults).
+//  Polls the TWAI driver for incoming frames (arm status, faults).
 // ─────────────────────────────────────────────────────────────────────────────
 static void canTask(void* /*arg*/) {
     const TickType_t period = pdMS_TO_TICKS(5);   // 200 Hz poll

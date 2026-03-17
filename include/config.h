@@ -11,14 +11,17 @@
 #define PIN_I2C_SDA         21
 #define PIN_I2C_SCL         22
 
-// ─── SPI → CAN transceiver (MCP2515 assumed) ─────────────────────────────────
+// ─── SPI (sensors only — I2C SDA/SCL still on 21/22) ─────────────────────────
 #define PIN_SPI_MOSI        23
 #define PIN_SPI_MISO        19
 #define PIN_SPI_SCK         18
-#define PIN_CAN_CS           5
-#define CAN_INT_PIN          4   // MCP2515 INT line (active-low)
-#define CAN_CLOCK_MHZ        8   // oscillator on CAN module (8 or 16 MHz)
-#define CAN_BITRATE_KBPS   500
+
+// ─── TWAI (ESP32 built-in CAN) + SN65HVD230 transceiver ──────────────────────
+// GPIO assignments — route TX→CTX and RX←CRX on the SN65HVD230.
+// TODO: confirm physical wiring; these are common spare GPIOs on the DevKit.
+#define PIN_CAN_TX           4   // ESP32 CTX → SN65HVD230 D
+#define PIN_CAN_RX           5   // ESP32 CRX ← SN65HVD230 R
+#define CAN_BITRATE_BPS  500000  // 500 kbps
 
 // ─── UART2 — Mini PC ─────────────────────────────────────────────────────────
 #define PIN_UART_TX         17
@@ -94,6 +97,37 @@
 
   #define VESC_TRACK_I_MAX_A      5.0f   // TODO: tune for traction motors
   #define VESC_FLIPPER_I_MAX_A    3.0f   // TODO: tune for flipper motors
+
+  // ── ODrive arm — CAN node IDs (set in odrivetool / DIP switches) ────────────
+  // J1–J3: confirmed from ginkgo_odrive_bridge yaml (node_ids: [16, 17, 18])
+  // J4–J6: all-brushless variant — node IDs TODO (assumed sequential)
+  #define ODRIVE_NODE_J1          0x10   // 16
+  #define ODRIVE_NODE_J2          0x11   // 17
+  #define ODRIVE_NODE_J3          0x12   // 18
+  #define ODRIVE_NODE_J4          0x13   // TODO: confirm
+  #define ODRIVE_NODE_J5          0x14   // TODO: confirm
+  #define ODRIVE_NODE_J6          0x15   // TODO: confirm
+
+  // Gear ratios (motor turns → output turns).
+  // J1–J3: confirmed (48.0). J4–J6: assumed same; verify on bench.
+  #define ODRIVE_GEAR_J1          48.0f
+  #define ODRIVE_GEAR_J2          48.0f
+  #define ODRIVE_GEAR_J3          48.0f
+  #define ODRIVE_GEAR_J4          48.0f  // TODO: confirm
+  #define ODRIVE_GEAR_J5          48.0f  // TODO: confirm
+  #define ODRIVE_GEAR_J6          48.0f  // TODO: confirm
+
+  // Direction multiplier (+1 or -1): flips sign so positive angle = positive motion.
+  // J1–J3: confirmed (-1). J4–J6: assumed same; verify on bench.
+  #define ODRIVE_DIR_J1          (-1.0f)
+  #define ODRIVE_DIR_J2          (-1.0f)
+  #define ODRIVE_DIR_J3          (-1.0f)
+  #define ODRIVE_DIR_J4          (-1.0f) // TODO: confirm
+  #define ODRIVE_DIR_J5          (-1.0f) // TODO: confirm
+  #define ODRIVE_DIR_J6          (-1.0f) // TODO: confirm
+
+  // Encoder zero capture: max time to wait for one RTR response (ms).
+  #define ODRIVE_ZERO_TIMEOUT_MS  50
 #endif
 
 #define ENC_SPEED_INTERVAL_MS   50       // speed recalculation period
