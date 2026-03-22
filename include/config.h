@@ -76,7 +76,7 @@
 
 // Robot-specific encoder constants — fill from datasheet / measurement
 #ifdef ROBOT_MAIN
-  #define ENC_CPR_TRACK        1000.0f   // counts per motor revolution (after 4× decode)
+  #define ENC_CPR_TRACK        2000.0f   // counts per motor revolution (after 4× decode)
   #define ENC_CPR_FLIPPER      1000.0f
   #define TRACK_GEAR_RATIO       20.0f   // motor→wheel reduction
   #define FLIPPER_GEAR_RATIO     30.0f

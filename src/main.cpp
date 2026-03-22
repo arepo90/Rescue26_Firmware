@@ -151,15 +151,20 @@ void setup() {
     xTaskCreatePinnedToCore(commsTask, "Comms",   STACK_COMMS,   nullptr,
                             PRIO_COMMS,   &h_comms, TASK_CORE_COMMS);
 
+                            /*
     xTaskCreatePinnedToCore(canTask,   "CAN",     STACK_CAN,     nullptr,
                             PRIO_CAN,     &h_can,   TASK_CORE_CAN);
+                            */
 
+                            /*
     // ── Core 1: control + sensor tasks ───────────────────────────────────────
     xTaskCreatePinnedToCore(controlTask, "Control", STACK_CONTROL, nullptr,
                             PRIO_CONTROL, &h_control, TASK_CORE_CONTROL);
+                            */
 
     xTaskCreatePinnedToCore(sensorTask,  "Sensors", STACK_SENSORS, nullptr,
                             PRIO_SENSORS, &h_sensors, TASK_CORE_SENSORS);
+                            
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

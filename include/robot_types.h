@@ -92,13 +92,29 @@ struct SystemStatus {
 
 #pragma pack(push, 1)
 
+// ROBOT_MAIN: 2 traction encoders + 1 joined flipper encoder (24 bytes)
 struct TelemetryPayload {
     uint8_t  mode;             // RobotMode value
     uint8_t  flags;            // bit0=ppm_ok bit1=sensors_active bit2=can_ok bit3=estop
     uint16_t ppm[PPM_CHANNELS];// raw µs per channel
     int16_t  speed_left;       // RPM × 10
     int16_t  speed_right;      // RPM × 10
-    int16_t  flipper_angle;    // degrees × 10
+    int16_t  flipper_angle;    // degrees × 10  (single joined flipper)
+    uint32_t uptime_ms;
+};
+
+// ROBOT_SECONDARY: 2 traction encoders + 4 independent flipper encoders (30 bytes)
+// Sent over MSG_TELEMETRY (0x01) — distinguished from TelemetryPayload by payload length.
+struct TelemetrySecPayload {
+    uint8_t  mode;
+    uint8_t  flags;            // same bit layout as TelemetryPayload
+    uint16_t ppm[PPM_CHANNELS];
+    int16_t  speed_left;       // RPM × 10
+    int16_t  speed_right;      // RPM × 10
+    int16_t  flipper_fl_angle; // front-left  flipper, degrees × 10
+    int16_t  flipper_fr_angle; // front-right flipper, degrees × 10
+    int16_t  flipper_rl_angle; // rear-left   flipper, degrees × 10
+    int16_t  flipper_rr_angle; // rear-right  flipper, degrees × 10
     uint32_t uptime_ms;
 };
 
