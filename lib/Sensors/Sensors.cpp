@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <Adafruit_LIS3MDL.h>
 #include <Adafruit_MLX90640.h>
+#include <Adafruit_BNO055.h>
 #include <math.h>
 
 // ─── Static member definitions ───────────────────────────────────────────────
@@ -11,14 +12,17 @@ uint8_t      Sensors::s_mask    = 0;
 MagData      Sensors::s_mag     = {};
 ThermalData  Sensors::s_thermal = {};
 GasData      Sensors::s_gas     = {};
+ImuData      Sensors::s_imu     = {};
 bool         Sensors::s_lis_ok  = false;
 bool         Sensors::s_mlx_ok  = false;
+bool         Sensors::s_bno_ok  = false;
 
 // File-level mutex: keeps FreeRTOS types out of the class header
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static Adafruit_LIS3MDL  s_lis;
 static Adafruit_MLX90640 s_mlx;
+static Adafruit_BNO055   s_bno(55, BNO055_I2C_ADDR);
 
 // Thermal pixel buffer for Adafruit_MLX90640::getFrame()
 static float s_mlx_pixels[32 * 24];
@@ -38,15 +42,21 @@ bool Sensors::begin() {
     }
 
     // MLX90640 ────────────────────────────────────────────────────────────────
-    // begin() reads EEPROM and extracts calibration internally
     if (s_mlx.begin(MLX90640_I2C_ADDR, &Wire)) {
-        s_mlx.setMode(MLX90640_CHESS);           // chess-board sub-frame pattern
+        s_mlx.setMode(MLX90640_CHESS);
         s_mlx.setResolution(MLX90640_ADC_18BIT);
-        s_mlx.setRefreshRate(MLX90640_4_HZ);     // 4 Hz; adjust via MLX90640_REFRESH_HZ
+        s_mlx.setRefreshRate(MLX90640_4_HZ);
         s_mlx_ok = true;
     }
 
-    return true;   // non-fatal: caller can check s_lis_ok / s_mlx_ok separately
+    // BNO055 ──────────────────────────────────────────────────────────────────
+    // NDOF fusion mode: uses accel + gyro + mag for full orientation.
+    if (s_bno.begin()) {
+        s_bno.setExtCrystalUse(true);   // use external 32.768 kHz crystal for accuracy
+        s_bno_ok = true;
+    }
+
+    return true;   // non-fatal: callers can check s_*_ok separately
 }
 
 // ─── Sensor task entry point ──────────────────────────────────────────────────
@@ -54,6 +64,7 @@ void Sensors::runOnce() {
     if (s_mask & SENSOR_BIT_MAG)     readMag();
     if (s_mask & SENSOR_BIT_THERMAL) readThermal();
     if (s_mask & SENSOR_BIT_GAS)     readGas();
+    if (s_mask & SENSOR_BIT_IMU)     readImu();
 }
 
 // ─── Mask control ─────────────────────────────────────────────────────────────
@@ -86,6 +97,12 @@ void Sensors::getThermal(ThermalData& out) {
 void Sensors::getGas(GasData& out) {
     portENTER_CRITICAL(&s_mux);
     out = s_gas;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void Sensors::getImu(ImuData& out) {
+    portENTER_CRITICAL(&s_mux);
+    out = s_imu;
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -157,6 +174,36 @@ void Sensors::readGas() {
 
     portENTER_CRITICAL(&s_mux);
     s_gas = d;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void Sensors::readImu() {
+    if (!s_bno_ok) return;
+
+    imu::Quaternion quat = s_bno.getQuat();
+    imu::Vector<3>  euler = s_bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+    imu::Vector<3>  laccel = s_bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+    imu::Vector<3>  gyro   = s_bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+
+    uint8_t cal_sys = 0, cal_gyro = 0, cal_accel = 0, cal_mag = 0;
+    s_bno.getCalibration(&cal_sys, &cal_gyro, &cal_accel, &cal_mag);
+
+    ImuData d;
+    // BNO055 Euler: x=heading/yaw, y=roll, z=pitch in degrees
+    d.yaw_deg   = euler.x();
+    d.pitch_deg = euler.z();
+    d.roll_deg  = euler.y();
+    d.quat_w = quat.w(); d.quat_x = quat.x();
+    d.quat_y = quat.y(); d.quat_z = quat.z();
+    d.accel_x = laccel.x(); d.accel_y = laccel.y(); d.accel_z = laccel.z();
+    d.gyro_x  = gyro.x();   d.gyro_y  = gyro.y();   d.gyro_z  = gyro.z();
+    d.temp_C     = static_cast<float>(s_bno.getTemp());
+    d.calib_sys  = cal_sys;  d.calib_gyro  = cal_gyro;
+    d.calib_accel = cal_accel; d.calib_mag = cal_mag;
+    d.valid = true;
+
+    portENTER_CRITICAL(&s_mux);
+    s_imu = d;
     portEXIT_CRITICAL(&s_mux);
 }
 

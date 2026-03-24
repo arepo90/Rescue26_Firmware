@@ -33,6 +33,8 @@ public:
     static void sendMagData(const MagData& mag);
     static void sendThermalData(const ThermalData& thermal);
     static void sendGasData(const GasData& gas);
+    static void sendImuData(const ImuData& imu);
+    static void sendEncoderExt(const EncoderState& enc);   // ROBOT_SECONDARY flipper angles
     static void sendStatus(const SystemStatus& status);
 
     // ── Callback registration ─────────────────────────────────────────────────

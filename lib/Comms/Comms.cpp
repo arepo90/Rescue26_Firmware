@@ -176,6 +176,43 @@ void Comms::sendGasData(const GasData& gas) {
               sizeof(p));
 }
 
+void Comms::sendImuData(const ImuData& imu) {
+    ImuPayload p;
+    p.yaw_deg10       = static_cast<int16_t>(imu.yaw_deg   * 10.0f);
+    p.pitch_deg10     = static_cast<int16_t>(imu.pitch_deg * 10.0f);
+    p.roll_deg10      = static_cast<int16_t>(imu.roll_deg  * 10.0f);
+    // Q14 fixed point: multiply by 2^14 = 16384
+    p.quat_w_s14      = static_cast<int16_t>(imu.quat_w * 16384.0f);
+    p.quat_x_s14      = static_cast<int16_t>(imu.quat_x * 16384.0f);
+    p.quat_y_s14      = static_cast<int16_t>(imu.quat_y * 16384.0f);
+    p.quat_z_s14      = static_cast<int16_t>(imu.quat_z * 16384.0f);
+    p.accel_x_ms2_100 = static_cast<int16_t>(imu.accel_x * 100.0f);
+    p.accel_y_ms2_100 = static_cast<int16_t>(imu.accel_y * 100.0f);
+    p.accel_z_ms2_100 = static_cast<int16_t>(imu.accel_z * 100.0f);
+    p.gyro_x_rads1000 = static_cast<int16_t>(imu.gyro_x * 1000.0f);
+    p.gyro_y_rads1000 = static_cast<int16_t>(imu.gyro_y * 1000.0f);
+    p.gyro_z_rads1000 = static_cast<int16_t>(imu.gyro_z * 1000.0f);
+    p.temp_C          = static_cast<int8_t>(imu.temp_C);
+    p.calib_sys       = imu.calib_sys;
+    p.calib_gyro      = imu.calib_gyro;
+    p.calib_accel     = imu.calib_accel;
+    p.calib_mag       = imu.calib_mag;
+    sendFrame(MSG_SENSOR_IMU,
+              reinterpret_cast<const uint8_t*>(&p),
+              sizeof(p));
+}
+
+void Comms::sendEncoderExt(const EncoderState& enc) {
+    EncoderExtPayload p;
+    p.flipper_fl_deg10 = static_cast<int16_t>(enc.flipper_angle_fl_deg * 10.0f);
+    p.flipper_fr_deg10 = static_cast<int16_t>(enc.flipper_angle_fr_deg * 10.0f);
+    p.flipper_rl_deg10 = static_cast<int16_t>(enc.flipper_angle_rl_deg * 10.0f);
+    p.flipper_rr_deg10 = static_cast<int16_t>(enc.flipper_angle_rr_deg * 10.0f);
+    sendFrame(MSG_ENCODER_EXT,
+              reinterpret_cast<const uint8_t*>(&p),
+              sizeof(p));
+}
+
 void Comms::sendStatus(const SystemStatus& s) {
     uint8_t buf[4];
     buf[0] = static_cast<uint8_t>(s.mode);

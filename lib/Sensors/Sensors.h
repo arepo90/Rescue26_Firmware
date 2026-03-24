@@ -3,7 +3,8 @@
 #include "robot_types.h"
 
 // ─── Sensors ──────────────────────────────────────────────────────────────────
-// Manages LIS3MDL (magnetometer), MLX90640 (thermal camera), and MQ2 (gas).
+// Manages LIS3MDL (magnetometer), MLX90640 (thermal camera), MQ2 (gas),
+// and BNO055 (9-DOF IMU).
 //
 // All sensors remain in their lowest-power / idle state until enabled via
 // setEnabledMask().  Once a sensor bit is set, its reading loop runs inside
@@ -11,7 +12,7 @@
 // control loop.
 //
 // Call begin() once from setup, then runOnce() repeatedly from the sensor task.
-// Retrieve the latest data with getMag() / getThermal() / getGas().
+// Retrieve the latest data with getMag() / getThermal() / getGas() / getImu().
 
 class Sensors {
 public:
@@ -29,11 +30,13 @@ public:
     static void getMag(MagData& out);
     static void getThermal(ThermalData& out);
     static void getGas(GasData& out);
+    static void getImu(ImuData& out);
 
 private:
     static void readMag();
     static void readThermal();
     static void readGas();
+    static void readImu();
 
     // Heading from raw magnetometer XYZ
     static float computeHeading(float x, float y);
@@ -46,6 +49,8 @@ private:
     static MagData        s_mag;
     static ThermalData    s_thermal;
     static GasData        s_gas;
+    static ImuData        s_imu;
     static bool           s_lis_ok;
     static bool           s_mlx_ok;
+    static bool           s_bno_ok;
 };

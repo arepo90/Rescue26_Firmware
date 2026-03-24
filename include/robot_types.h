@@ -33,12 +33,21 @@ inline float ppmNormalise(uint16_t raw_us) {
 
 // ─── Encoder / Drive ─────────────────────────────────────────────────────────
 struct EncoderState {
+    // Track encoders — present on both robots
     int32_t  count_left;
     int32_t  count_right;
-    int32_t  count_flipper;
     float    speed_left_rpm;
     float    speed_right_rpm;
+
+    // ROBOT_MAIN: single joined flipper
+    int32_t  count_flipper;
     float    flipper_angle_deg;
+
+    // ROBOT_SECONDARY: four independent flippers (zero on ROBOT_MAIN)
+    int32_t  count_flip_fl, count_flip_fr, count_flip_rl, count_flip_rr;
+    float    flipper_angle_fl_deg, flipper_angle_fr_deg;
+    float    flipper_angle_rl_deg, flipper_angle_rr_deg;
+
     uint32_t timestamp_ms;
 };
 
@@ -52,6 +61,30 @@ struct ArmEndEffector {
     // cartesian position (mm, robot frame) + orientation (degrees)
     float x, y, z;
     float roll, pitch, yaw;
+};
+
+// ─── IMU ─────────────────────────────────────────────────────────────────────
+struct ImuData {
+    // Euler angles (degrees, BNO055 fused output)
+    float yaw_deg;
+    float pitch_deg;
+    float roll_deg;
+
+    // Quaternion (unit quaternion)
+    float quat_w, quat_x, quat_y, quat_z;
+
+    // Linear acceleration (m/s², gravity-compensated)
+    float accel_x, accel_y, accel_z;
+
+    // Angular velocity (rad/s)
+    float gyro_x, gyro_y, gyro_z;
+
+    float temp_C;
+
+    // Calibration status 0–3 (3 = fully calibrated)
+    uint8_t calib_sys, calib_gyro, calib_accel, calib_mag;
+
+    bool valid;
 };
 
 // ─── Sensor Data ─────────────────────────────────────────────────────────────
@@ -129,6 +162,36 @@ struct GasPayload {
 struct ThermalPayload {
     int16_t pixels[32 * 24];   // °C × 10
     int16_t ambient_C10;
+};
+
+// ImuPayload (MSG_SENSOR_IMU = 0x06) — 38 bytes
+struct ImuPayload {
+    int16_t yaw_deg10;          // degrees × 10
+    int16_t pitch_deg10;
+    int16_t roll_deg10;
+    int16_t quat_w_s14;         // quaternion component × 16384 (Q14 fixed point)
+    int16_t quat_x_s14;
+    int16_t quat_y_s14;
+    int16_t quat_z_s14;
+    int16_t accel_x_ms2_100;    // m/s² × 100
+    int16_t accel_y_ms2_100;
+    int16_t accel_z_ms2_100;
+    int16_t gyro_x_rads1000;    // rad/s × 1000
+    int16_t gyro_y_rads1000;
+    int16_t gyro_z_rads1000;
+    int8_t  temp_C;
+    uint8_t calib_sys;          // 0–3
+    uint8_t calib_gyro;
+    uint8_t calib_accel;
+    uint8_t calib_mag;
+};
+
+// EncoderExtPayload (MSG_ENCODER_EXT = 0x07) — ROBOT_SECONDARY only — 8 bytes
+struct EncoderExtPayload {
+    int16_t flipper_fl_deg10;   // angle × 10 degrees; front-left
+    int16_t flipper_fr_deg10;   // front-right
+    int16_t flipper_rl_deg10;   // rear-left
+    int16_t flipper_rr_deg10;   // rear-right
 };
 
 #pragma pack(pop)
