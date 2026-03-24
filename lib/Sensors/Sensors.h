@@ -38,12 +38,6 @@ private:
     static void readGas();
     static void readImu();
 
-    // Heading from raw magnetometer XYZ
-    static float computeHeading(float x, float y);
-
-    // MQ2 resistance → estimated gas concentration
-    static float mq2Curve(float ratio, float a, float b);
-
     static uint8_t        s_mask;
     // s_mux lives as a file-level static in Sensors.cpp (avoids FreeRTOS header in .h)
     static MagData        s_mag;

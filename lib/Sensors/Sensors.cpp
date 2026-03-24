@@ -5,7 +5,6 @@
 #include <Adafruit_LIS3MDL.h>
 #include <Adafruit_MLX90640.h>
 #include <Adafruit_BNO055.h>
-#include <math.h>
 
 // ─── Static member definitions ───────────────────────────────────────────────
 uint8_t      Sensors::s_mask    = 0;
@@ -114,11 +113,10 @@ void Sensors::readMag() {
     s_lis.getEvent(&event);
 
     MagData d;
-    d.x_uT       = event.magnetic.x;
-    d.y_uT       = event.magnetic.y;
-    d.z_uT       = event.magnetic.z;
-    d.heading_deg = computeHeading(d.x_uT, d.y_uT);
-    d.valid       = true;
+    d.x_uT  = event.magnetic.x;
+    d.y_uT  = event.magnetic.y;
+    d.z_uT  = event.magnetic.z;
+    d.valid = true;
 
     portENTER_CRITICAL(&s_mux);
     s_mag = d;
@@ -133,14 +131,10 @@ void Sensors::readThermal() {
     if (s_mlx.getFrame(s_mlx_pixels) != 0) return;
 
     ThermalData d;
-    d.ambient_temp_C = 0.0f;   // Adafruit API does not expose ambient separately
-    float max_t = -300.0f;
     for (int i = 0; i < 32 * 24; i++) {
         d.pixels[i] = s_mlx_pixels[i];
-        if (s_mlx_pixels[i] > max_t) max_t = s_mlx_pixels[i];
     }
-    d.max_temp_C = max_t;
-    d.valid      = true;
+    d.valid = true;
 
     portENTER_CRITICAL(&s_mux);
     s_thermal = d;
@@ -166,11 +160,7 @@ void Sensors::readGas() {
 
     GasData d;
     d.rs_ro_ratio = ratio;
-    // Empirical curves from MQ2 datasheet (log-log linear approximation)
-    d.ppm_lpg   = mq2Curve(ratio, 44.947f, -3.445f);
-    d.ppm_co    = mq2Curve(ratio, 18.446f, -2.800f);
-    d.ppm_smoke = mq2Curve(ratio, 22.098f, -2.676f);
-    d.valid      = true;
+    d.valid       = true;
 
     portENTER_CRITICAL(&s_mux);
     s_gas = d;
@@ -180,10 +170,9 @@ void Sensors::readGas() {
 void Sensors::readImu() {
     if (!s_bno_ok) return;
 
-    imu::Quaternion quat = s_bno.getQuat();
-    imu::Vector<3>  euler = s_bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-    imu::Vector<3>  laccel = s_bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
-    imu::Vector<3>  gyro   = s_bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+    imu::Vector<3> euler  = s_bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+    imu::Vector<3> laccel = s_bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+    imu::Vector<3> gyro   = s_bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
 
     uint8_t cal_sys = 0, cal_gyro = 0, cal_accel = 0, cal_mag = 0;
     s_bno.getCalibration(&cal_sys, &cal_gyro, &cal_accel, &cal_mag);
@@ -193,13 +182,9 @@ void Sensors::readImu() {
     d.yaw_deg   = euler.x();
     d.pitch_deg = euler.z();
     d.roll_deg  = euler.y();
-    d.quat_w = quat.w(); d.quat_x = quat.x();
-    d.quat_y = quat.y(); d.quat_z = quat.z();
     d.accel_x = laccel.x(); d.accel_y = laccel.y(); d.accel_z = laccel.z();
     d.gyro_x  = gyro.x();   d.gyro_y  = gyro.y();   d.gyro_z  = gyro.z();
-    d.temp_C     = static_cast<float>(s_bno.getTemp());
-    d.calib_sys  = cal_sys;  d.calib_gyro  = cal_gyro;
-    d.calib_accel = cal_accel; d.calib_mag = cal_mag;
+    d.calib = (uint8_t)((cal_sys << 6) | (cal_gyro << 4) | (cal_accel << 2) | cal_mag);
     d.valid = true;
 
     portENTER_CRITICAL(&s_mux);
@@ -207,14 +192,3 @@ void Sensors::readImu() {
     portEXIT_CRITICAL(&s_mux);
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-float Sensors::computeHeading(float x, float y) {
-    float h = atan2f(y, x) * 180.0f / M_PI;
-    if (h < 0.0f) h += 360.0f;
-    return h;
-}
-
-// Log-log linear curve: PPM = a × (Rs/Ro)^b
-float Sensors::mq2Curve(float ratio, float a, float b) {
-    return a * powf(ratio, b);
-}

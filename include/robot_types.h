@@ -66,12 +66,7 @@ struct ArmEndEffector {
 // ─── IMU ─────────────────────────────────────────────────────────────────────
 struct ImuData {
     // Euler angles (degrees, BNO055 fused output)
-    float yaw_deg;
-    float pitch_deg;
-    float roll_deg;
-
-    // Quaternion (unit quaternion)
-    float quat_w, quat_x, quat_y, quat_z;
+    float yaw_deg, pitch_deg, roll_deg;
 
     // Linear acceleration (m/s², gravity-compensated)
     float accel_x, accel_y, accel_z;
@@ -79,10 +74,9 @@ struct ImuData {
     // Angular velocity (rad/s)
     float gyro_x, gyro_y, gyro_z;
 
-    float temp_C;
-
-    // Calibration status 0–3 (3 = fully calibrated)
-    uint8_t calib_sys, calib_gyro, calib_accel, calib_mag;
+    // Packed calibration: bits[7:6]=sys, bits[5:4]=gyro, bits[3:2]=accel, bits[1:0]=mag
+    // Each field is 0–3 (3 = fully calibrated)
+    uint8_t calib;
 
     bool valid;
 };
@@ -90,22 +84,16 @@ struct ImuData {
 // ─── Sensor Data ─────────────────────────────────────────────────────────────
 struct MagData {
     float x_uT, y_uT, z_uT;
-    float heading_deg;    // 0–360°, North referenced if calibrated
     bool  valid;
 };
 
 struct ThermalData {
     float pixels[32 * 24];   // °C, row-major (32 columns × 24 rows)
-    float ambient_temp_C;
-    float max_temp_C;
     bool  valid;
 };
 
 struct GasData {
     float rs_ro_ratio;    // sensor ratio (lower → more gas)
-    float ppm_lpg;
-    float ppm_co;
-    float ppm_smoke;
     bool  valid;
 };
 
@@ -147,43 +135,29 @@ struct MagPayload {
     int16_t x_uT100;           // µT × 100
     int16_t y_uT100;
     int16_t z_uT100;
-    int16_t heading_deg10;     // degrees × 10
 };
 
 struct GasPayload {
     int16_t rs_ro_100;         // ratio × 100
-    int16_t ppm_lpg;
-    int16_t ppm_co;
-    int16_t ppm_smoke;
 };
 
-// ThermalPayload: 32×24 int16_t (°C × 10) + 1 int16_t ambient = 769 int16_t = 1538 bytes
-// Sent as raw int16_t array — ambient is last element
+// ThermalPayload: 32×24 int16_t (°C × 10) = 1536 bytes
 struct ThermalPayload {
     int16_t pixels[32 * 24];   // °C × 10
-    int16_t ambient_C10;
 };
 
-// ImuPayload (MSG_SENSOR_IMU = 0x06) — 38 bytes
+// ImuPayload (MSG_SENSOR_IMU = 0x06) — 19 bytes
 struct ImuPayload {
     int16_t yaw_deg10;          // degrees × 10
     int16_t pitch_deg10;
     int16_t roll_deg10;
-    int16_t quat_w_s14;         // quaternion component × 16384 (Q14 fixed point)
-    int16_t quat_x_s14;
-    int16_t quat_y_s14;
-    int16_t quat_z_s14;
     int16_t accel_x_ms2_100;    // m/s² × 100
     int16_t accel_y_ms2_100;
     int16_t accel_z_ms2_100;
     int16_t gyro_x_rads1000;    // rad/s × 1000
     int16_t gyro_y_rads1000;
     int16_t gyro_z_rads1000;
-    int8_t  temp_C;
-    uint8_t calib_sys;          // 0–3
-    uint8_t calib_gyro;
-    uint8_t calib_accel;
-    uint8_t calib_mag;
+    uint8_t calib;              // bits[7:6]=sys, bits[5:4]=gyro, bits[3:2]=accel, bits[1:0]=mag
 };
 
 // EncoderExtPayload (MSG_ENCODER_EXT = 0x07) — ROBOT_SECONDARY only — 8 bytes

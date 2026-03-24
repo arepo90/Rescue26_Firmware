@@ -87,6 +87,12 @@
   #define FLIPPER_GEAR_RATIO     30.0f
   #define FLIPPER_ANGLE_MIN     -10.0f   // mechanical limits (degrees)
   #define FLIPPER_ANGLE_MAX     120.0f
+
+  // Flipper position PID coefficients — tune on bench
+  #define FLIPPER_PID_KP        1.0f   // proportional gain
+  #define FLIPPER_PID_KI        0.0f   // integral gain
+  #define FLIPPER_PID_KD        0.0f   // derivative gain
+  #define FLIPPER_PID_I_MAX     0.5f   // integral windup clamp (normalised effort units)
 #endif
 
 // ROBOT_SECONDARY: 4 independent flippers on units 2–5
@@ -192,8 +198,8 @@
 // ESP32 → PC message types
 #define MSG_TELEMETRY        0x01        // PPM + encoder + state, ~50 Hz
 #define MSG_SENSOR_THERMAL   0x02        // 32×24 thermal pixels (int16 ×10 °C)
-#define MSG_SENSOR_MAG       0x03        // magnetometer XYZ + heading
-#define MSG_SENSOR_GAS       0x04        // gas sensor ratios + estimated PPM
+#define MSG_SENSOR_MAG       0x03        // magnetometer XYZ
+#define MSG_SENSOR_GAS       0x04        // gas sensor Rs/Ro ratio
 #define MSG_STATUS           0x05        // system status / heartbeat
 #define MSG_SENSOR_IMU       0x06        // BNO055 orientation + accel + gyro
 #define MSG_ENCODER_EXT      0x07        // ROBOT_SECONDARY: 4 independent flipper angles

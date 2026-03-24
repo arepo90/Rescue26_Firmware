@@ -16,6 +16,31 @@ uint8_t      Control::s_sensor_mask = 0;
 // File-level mutex: keeps FreeRTOS types out of the class header
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
+// ─── Flipper PID state (ROBOT_MAIN only) ──────────────────────────────────────
+#ifdef ROBOT_MAIN
+static float s_pid_integral = 0.0f;
+static float s_pid_prev_err = 0.0f;
+
+static float flipperPID(float setpoint_deg, float measured_deg) {
+    constexpr float dt = 1.0f / CONTROL_LOOP_HZ;
+
+    float err         = setpoint_deg - measured_deg;
+    s_pid_integral   += err * dt;
+    if (s_pid_integral >  FLIPPER_PID_I_MAX) s_pid_integral =  FLIPPER_PID_I_MAX;
+    if (s_pid_integral < -FLIPPER_PID_I_MAX) s_pid_integral = -FLIPPER_PID_I_MAX;
+
+    float deriv     = (err - s_pid_prev_err) / dt;
+    s_pid_prev_err  = err;
+
+    float effort = FLIPPER_PID_KP * err
+                 + FLIPPER_PID_KI * s_pid_integral
+                 + FLIPPER_PID_KD * deriv;
+    if (effort >  1.0f) effort =  1.0f;
+    if (effort < -1.0f) effort = -1.0f;
+    return effort;
+}
+#endif
+
 // ─── begin() — called once from setup() ──────────────────────────────────────
 void Control::begin() {
     // Wire up callbacks from Comms to Control setters
@@ -91,7 +116,7 @@ void Control::tick() {
 // Ch2/Ch4 → tank-drive tracks.
 // ROBOT_MAIN also drives the single forward flipper from Ch1.
 // ROBOT_SECONDARY leaves flippers at neutral (controlled only in FLIPPER mode).
-void Control::updateNormalMode(const PPMFrame& ppm, const EncoderState& /*enc*/) {
+void Control::updateNormalMode(const PPMFrame& ppm, const EncoderState& enc) {
     float forward = ppmNormalise(ppm.ch[PPM_CH_FORWARD - 1]);
     float turn    = ppmNormalise(ppm.ch[PPM_CH_TURN    - 1]);
 
@@ -102,11 +127,10 @@ void Control::updateNormalMode(const PPMFrame& ppm, const EncoderState& /*enc*/)
     Locomotion::setDriveCommand(forward, turn);
 
 #ifdef ROBOT_MAIN
-    float flipper_norm  = ppmNormalise(ppm.ch[PPM_CH_FLIPPER - 1]);
-    float flipper_angle = flipper_norm * FLIPPER_ANGLE_MAX;
-    Locomotion::setFlipperTarget(flipper_angle);
+    float target_deg = ppmNormalise(ppm.ch[PPM_CH_FLIPPER - 1]) * FLIPPER_ANGLE_MAX;
+    Locomotion::setFlipperEffort(flipperPID(target_deg, enc.flipper_angle_deg));
 #elif defined(ROBOT_SECONDARY)
-    // No flipper in normal mode on ROBOT_SECONDARY
+    (void)enc;  // no flipper in normal mode on ROBOT_SECONDARY
 #endif
 }
 

@@ -145,10 +145,9 @@ void Comms::sendTelemetry(const TelemetryPayload& p) {
 
 void Comms::sendMagData(const MagData& mag) {
     MagPayload p;
-    p.x_uT100      = static_cast<int16_t>(mag.x_uT * 100.0f);
-    p.y_uT100      = static_cast<int16_t>(mag.y_uT * 100.0f);
-    p.z_uT100      = static_cast<int16_t>(mag.z_uT * 100.0f);
-    p.heading_deg10 = static_cast<int16_t>(mag.heading_deg * 10.0f);
+    p.x_uT100 = static_cast<int16_t>(mag.x_uT * 100.0f);
+    p.y_uT100 = static_cast<int16_t>(mag.y_uT * 100.0f);
+    p.z_uT100 = static_cast<int16_t>(mag.z_uT * 100.0f);
     sendFrame(MSG_SENSOR_MAG,
               reinterpret_cast<const uint8_t*>(&p),
               sizeof(p));
@@ -159,7 +158,6 @@ void Comms::sendThermalData(const ThermalData& thermal) {
     for (int i = 0; i < 32 * 24; i++) {
         p.pixels[i] = static_cast<int16_t>(thermal.pixels[i] * 10.0f);
     }
-    p.ambient_C10 = static_cast<int16_t>(thermal.ambient_temp_C * 10.0f);
     sendFrame(MSG_SENSOR_THERMAL,
               reinterpret_cast<const uint8_t*>(&p),
               sizeof(p));
@@ -168,9 +166,6 @@ void Comms::sendThermalData(const ThermalData& thermal) {
 void Comms::sendGasData(const GasData& gas) {
     GasPayload p;
     p.rs_ro_100 = static_cast<int16_t>(gas.rs_ro_ratio * 100.0f);
-    p.ppm_lpg   = static_cast<int16_t>(gas.ppm_lpg);
-    p.ppm_co    = static_cast<int16_t>(gas.ppm_co);
-    p.ppm_smoke = static_cast<int16_t>(gas.ppm_smoke);
     sendFrame(MSG_SENSOR_GAS,
               reinterpret_cast<const uint8_t*>(&p),
               sizeof(p));
@@ -181,22 +176,13 @@ void Comms::sendImuData(const ImuData& imu) {
     p.yaw_deg10       = static_cast<int16_t>(imu.yaw_deg   * 10.0f);
     p.pitch_deg10     = static_cast<int16_t>(imu.pitch_deg * 10.0f);
     p.roll_deg10      = static_cast<int16_t>(imu.roll_deg  * 10.0f);
-    // Q14 fixed point: multiply by 2^14 = 16384
-    p.quat_w_s14      = static_cast<int16_t>(imu.quat_w * 16384.0f);
-    p.quat_x_s14      = static_cast<int16_t>(imu.quat_x * 16384.0f);
-    p.quat_y_s14      = static_cast<int16_t>(imu.quat_y * 16384.0f);
-    p.quat_z_s14      = static_cast<int16_t>(imu.quat_z * 16384.0f);
     p.accel_x_ms2_100 = static_cast<int16_t>(imu.accel_x * 100.0f);
     p.accel_y_ms2_100 = static_cast<int16_t>(imu.accel_y * 100.0f);
     p.accel_z_ms2_100 = static_cast<int16_t>(imu.accel_z * 100.0f);
     p.gyro_x_rads1000 = static_cast<int16_t>(imu.gyro_x * 1000.0f);
     p.gyro_y_rads1000 = static_cast<int16_t>(imu.gyro_y * 1000.0f);
     p.gyro_z_rads1000 = static_cast<int16_t>(imu.gyro_z * 1000.0f);
-    p.temp_C          = static_cast<int8_t>(imu.temp_C);
-    p.calib_sys       = imu.calib_sys;
-    p.calib_gyro      = imu.calib_gyro;
-    p.calib_accel     = imu.calib_accel;
-    p.calib_mag       = imu.calib_mag;
+    p.calib           = imu.calib;
     sendFrame(MSG_SENSOR_IMU,
               reinterpret_cast<const uint8_t*>(&p),
               sizeof(p));

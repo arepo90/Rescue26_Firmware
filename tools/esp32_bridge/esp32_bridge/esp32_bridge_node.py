@@ -18,11 +18,11 @@ Published topics
 /encoders/tracks          geometry_msgs/Vector3        x=left_rpm, y=right_rpm, z=0
 /encoders/flipper         std_msgs/Float32MultiArray   [fl, fr, rl, rr] degrees
                                                         (only [0] valid on ROBOT_MAIN)
-/sensors/imu              sensor_msgs/Imu              BNO055 fused orientation+accel+gyro
-/sensors/mag              sensor_msgs/MagneticField    LIS3MDL raw field + custom heading
-                                                        field packed into covariance[0]
+/sensors/imu              sensor_msgs/Imu              BNO055 euler orientation (converted to
+                                                        quaternion in node) + accel + gyro
+/sensors/mag              sensor_msgs/MagneticField    LIS3MDL raw XYZ field
 /sensors/thermal          sensor_msgs/Image            32×24 float32 image (°C)
-/sensors/gas              std_msgs/Float32MultiArray   [rs_ro_ratio, ppm_lpg, ppm_co, ppm_smoke]
+/sensors/gas              std_msgs/Float32             Rs/Ro ratio
 
 Subscribed topics (PC → ESP32)
 ───────────────────────────────
@@ -36,6 +36,7 @@ serial_port   (str)   /dev/ttyUSB0
 baud_rate     (int)   921600
 """
 
+import math
 import struct
 import threading
 import rclpy
@@ -45,7 +46,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 import serial
 
 from std_msgs.msg import (
-    Bool, String, UInt8, Float32MultiArray, Int16MultiArray,
+    Bool, String, UInt8, Float32, Float32MultiArray, Int16MultiArray,
     MultiArrayDimension, MultiArrayLayout
 )
 from sensor_msgs.msg import Imu, MagneticField, Image
@@ -118,7 +119,7 @@ class ESP32BridgeNode(Node):
         self._pub_imu       = self.create_publisher(Imu,               '/sensors/imu',         qos)
         self._pub_mag       = self.create_publisher(MagneticField,     '/sensors/mag',         qos)
         self._pub_thermal   = self.create_publisher(Image,             '/sensors/thermal',     qos)
-        self._pub_gas       = self.create_publisher(Float32MultiArray, '/sensors/gas',         qos)
+        self._pub_gas       = self.create_publisher(Float32,           '/sensors/gas',         qos)
 
         # Subscribers
         self.create_subscription(Bool,              '/robot/estop',         self._on_estop,         10)
@@ -276,19 +277,17 @@ class ESP32BridgeNode(Node):
 
     def _handle_imu(self, payload: bytes):
         # ImuPayload: i16 yaw, pitch, roll (×10 deg)
-        #             i16 quat_w, x, y, z (Q14)
         #             i16 accel_x, y, z (×100 m/s²)
         #             i16 gyro_x, y, z (×1000 rad/s)
-        #             i8 temp_C, u8 calib_sys, gyro, accel, mag
-        # = 13×2 + 5×1 = 31 bytes   (packed, 1-byte aligned due to i8/u8)
-        if len(payload) < 31:
+        #             u8 calib (bits[7:6]=sys, [5:4]=gyro, [3:2]=accel, [1:0]=mag)
+        # = 9×2 + 1 = 19 bytes
+        fmt = '<' + 'h' * 9 + 'B'
+        if len(payload) < struct.calcsize(fmt):
             return
         (yaw_x10, pitch_x10, roll_x10,
-         qw_s14, qx_s14, qy_s14, qz_s14,
          ax_100, ay_100, az_100,
-         gx_1000, gy_1000, gz_1000) = struct.unpack_from('<' + 'h' * 13, payload, 0)
-        temp_C, cal_sys, cal_gyro, cal_accel, cal_mag = struct.unpack_from(
-            '<bBBBB', payload, 26)
+         gx_1000, gy_1000, gz_1000,
+         calib) = struct.unpack_from(fmt, payload)
 
         stamp = self.get_clock().now().to_msg()
 
@@ -296,12 +295,17 @@ class ESP32BridgeNode(Node):
         imu_msg.header.stamp    = stamp
         imu_msg.header.frame_id = 'imu_link'
 
-        # Quaternion (Q14 → float)
-        scale = 1.0 / 16384.0
-        imu_msg.orientation.w = qw_s14 * scale
-        imu_msg.orientation.x = qx_s14 * scale
-        imu_msg.orientation.y = qy_s14 * scale
-        imu_msg.orientation.z = qz_s14 * scale
+        # Convert BNO055 ZYX Euler (degrees) → quaternion for sensor_msgs/Imu
+        yaw   = math.radians(yaw_x10   / 10.0)
+        pitch = math.radians(pitch_x10 / 10.0)
+        roll  = math.radians(roll_x10  / 10.0)
+        cy, sy = math.cos(yaw * 0.5),   math.sin(yaw * 0.5)
+        cp, sp = math.cos(pitch * 0.5), math.sin(pitch * 0.5)
+        cr, sr = math.cos(roll * 0.5),  math.sin(roll * 0.5)
+        imu_msg.orientation.w = cr * cp * cy + sr * sp * sy
+        imu_msg.orientation.x = sr * cp * cy - cr * sp * sy
+        imu_msg.orientation.y = cr * sp * cy + sr * cp * sy
+        imu_msg.orientation.z = cr * cp * sy - sr * sp * cy
 
         # Linear acceleration (m/s²)
         imu_msg.linear_acceleration.x = ax_100 / 100.0
@@ -313,7 +317,7 @@ class ESP32BridgeNode(Node):
         imu_msg.angular_velocity.y = gy_1000 / 1000.0
         imu_msg.angular_velocity.z = gz_1000 / 1000.0
 
-        # Unknown covariance → fill with -1 sentinel
+        # Unknown covariance → -1 sentinel
         imu_msg.orientation_covariance[0]         = -1.0
         imu_msg.angular_velocity_covariance[0]    = -1.0
         imu_msg.linear_acceleration_covariance[0] = -1.0
@@ -321,33 +325,28 @@ class ESP32BridgeNode(Node):
         self._pub_imu.publish(imu_msg)
 
     def _handle_mag(self, payload: bytes):
-        # MagPayload: i16 x_uT100, y_uT100, z_uT100, heading_deg10
-        fmt = '<hhhh'
+        # MagPayload: i16 x_uT100, y_uT100, z_uT100
+        fmt = '<hhh'
         if len(payload) < struct.calcsize(fmt):
             return
-        x100, y100, z100, hdg10 = struct.unpack_from(fmt, payload)
-
-        stamp = self.get_clock().now().to_msg()
+        x100, y100, z100 = struct.unpack_from(fmt, payload)
 
         mag_msg = MagneticField()
-        mag_msg.header.stamp    = stamp
+        mag_msg.header.stamp    = self.get_clock().now().to_msg()
         mag_msg.header.frame_id = 'mag_link'
         # ROS convention: Tesla (sensor gives µT)
         mag_msg.magnetic_field.x = x100 / 100.0 * 1e-6
         mag_msg.magnetic_field.y = y100 / 100.0 * 1e-6
         mag_msg.magnetic_field.z = z100 / 100.0 * 1e-6
-        # Stash heading (deg×10) in covariance[0] for convenience
-        mag_msg.magnetic_field_covariance[0] = hdg10 / 10.0
         self._pub_mag.publish(mag_msg)
 
     def _handle_thermal(self, payload: bytes):
-        # ThermalPayload: i16[768] pixels (°C×10) + i16 ambient
+        # ThermalPayload: i16[768] pixels (°C×10) — 1536 bytes
         n_pixels = 32 * 24
-        expected = (n_pixels + 1) * 2
+        expected = n_pixels * 2
         if len(payload) < expected:
             return
         pixels_raw = struct.unpack_from(f'<{n_pixels}h', payload, 0)
-        # ambient = struct.unpack_from('<h', payload, n_pixels * 2)[0]
 
         pixels_f32 = bytes(
             struct.pack('<f', v / 10.0) for v in pixels_raw
@@ -364,14 +363,13 @@ class ESP32BridgeNode(Node):
         self._pub_thermal.publish(img_msg)
 
     def _handle_gas(self, payload: bytes):
-        # GasPayload: i16 rs_ro×100, i16 ppm_lpg, i16 ppm_co, i16 ppm_smoke
-        fmt = '<hhhh'
-        if len(payload) < struct.calcsize(fmt):
+        # GasPayload: i16 rs_ro×100
+        if len(payload) < 2:
             return
-        rs_ro100, lpg, co, smoke = struct.unpack_from(fmt, payload)
+        rs_ro100, = struct.unpack_from('<h', payload)
 
-        gas_msg = Float32MultiArray()
-        gas_msg.data = [rs_ro100 / 100.0, float(lpg), float(co), float(smoke)]
+        gas_msg = Float32()
+        gas_msg.data = rs_ro100 / 100.0
         self._pub_gas.publish(gas_msg)
 
     def _handle_status(self, payload: bytes):
